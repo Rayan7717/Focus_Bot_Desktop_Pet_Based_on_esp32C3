@@ -33,6 +33,7 @@
  * Date: 2025
  */
 
+#include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
@@ -44,11 +45,11 @@
 // ============================================================================
 #define SDA_PIN 8
 #define SCL_PIN 9
-#define TOUCH1_PIN 0    // Head
-#define TOUCH2_PIN 1    // Left Side
-#define TOUCH3_PIN 3    // Right Side
-#define TOUCH4_PIN 4    // Back
-#define MOTOR_PIN 6
+#define TOUCH1_PIN 0    // Left Front
+#define TOUCH2_PIN 1    // Left Back
+#define TOUCH3_PIN 3    // Right Front
+#define TOUCH4_PIN 4    // Right Back
+#define MOTOR_PIN 6     // Vibration Motor
 
 // Display Configuration
 #define SCREEN_WIDTH 128
@@ -93,11 +94,11 @@ struct PersonalityTraits {
 struct InteractionHistory {
     unsigned long lastInteraction;
     unsigned long totalInteractions;
-    uint16_t headTouches;
-    uint16_t leftTouches;
-    uint16_t rightTouches;
-    uint16_t backTouches;
-    uint8_t favoriteLocation;  // 0=Head, 1=Left, 2=Right, 3=Back
+    uint16_t leftFrontTouches;
+    uint16_t leftBackTouches;
+    uint16_t rightFrontTouches;
+    uint16_t rightBackTouches;
+    uint8_t favoriteLocation;  // 0=LeftFront, 1=LeftBack, 2=RightFront, 3=RightBack
     uint8_t bondLevel;         // 0-100
 };
 
@@ -234,6 +235,20 @@ void loadPersonalityData();
 void saveHistoryData();
 void loadHistoryData();
 void printPersonality();
+
+// Emotion state machine functions
+void updateEmotionState();
+EmotionState selectNextEmotion();
+uint16_t applyPersonalityModifier(EmotionState emotion, uint8_t baseProb);
+
+// Sensor processing functions
+void updateTouchSensors();
+void updateMotionSensors();
+void processTouchPatterns();
+void processMotionEvents();
+
+// Expression system
+void expressEmotion();
 
 // Face drawing functions
 void drawHappyFace();
@@ -492,22 +507,26 @@ void processTouchPatterns() {
 
         // Double Tap Detection (2 taps < 500ms)
         if (touchState.tapCount[i] == 2) {
-            if (now - touchState.releaseTime[i] < 500 && !touchState.current[i]) {
+            if (now - touchState.releaseTime[i] < 500) {
                 touchState.pattern = TOUCH_DOUBLE;
                 handleTouchPattern(TOUCH_DOUBLE, i);
                 touchState.tapCount[i] = 0;
                 return;
             }
         }
+    }
 
-        // Single Tap (released quickly)
+    // Check for single tap on released buttons
+    for (int i = 0; i < 4; i++) {
         if (!touchState.current[i] && touchState.last[i]) {
+            unsigned long pressDuration = millis() - touchState.pressTime[i];
             if (pressDuration < 500) {
                 // Wait a bit to see if it's a double tap
                 delay(150);
                 if (touchState.tapCount[i] == 1) {
                     touchState.pattern = TOUCH_SINGLE;
                     handleTouchPattern(TOUCH_SINGLE, i);
+                    touchState.tapCount[i] = 0;
                 }
             }
         }
@@ -533,10 +552,10 @@ void handleTouchPattern(TouchPattern pattern, uint8_t location) {
     history.totalInteractions++;
 
     switch(location) {
-        case 0: history.headTouches++; break;
-        case 1: history.leftTouches++; break;
-        case 2: history.rightTouches++; break;
-        case 3: history.backTouches++; break;
+        case 0: history.leftFrontTouches++; break;
+        case 1: history.leftBackTouches++; break;
+        case 2: history.rightFrontTouches++; break;
+        case 3: history.rightBackTouches++; break;
     }
 
     // Update favorite location
@@ -970,8 +989,8 @@ void drawSurprisedFace() {
 
 void drawContentFace() {
     // Peaceful closed eyes (gentle curves)
-    display.drawArc(45, 28, 8, 8, 0, 180, SH110X_WHITE);
-    display.drawArc(83, 28, 8, 8, 0, 180, SH110X_WHITE);
+    drawArc(45, 28, 8, 0, 180, SH110X_WHITE);
+    drawArc(83, 28, 8, 0, 180, SH110X_WHITE);
 
     // Gentle smile
     for (int x = 50; x < 78; x++) {
@@ -1156,19 +1175,19 @@ void adaptPersonality(TouchPattern pattern, uint8_t location) {
 }
 
 void updateFavoriteLocation() {
-    uint16_t maxTouches = history.headTouches;
+    uint16_t maxTouches = history.leftFrontTouches;
     history.favoriteLocation = 0;
 
-    if (history.leftTouches > maxTouches) {
-        maxTouches = history.leftTouches;
+    if (history.leftBackTouches > maxTouches) {
+        maxTouches = history.leftBackTouches;
         history.favoriteLocation = 1;
     }
-    if (history.rightTouches > maxTouches) {
-        maxTouches = history.rightTouches;
+    if (history.rightFrontTouches > maxTouches) {
+        maxTouches = history.rightFrontTouches;
         history.favoriteLocation = 2;
     }
-    if (history.backTouches > maxTouches) {
-        maxTouches = history.backTouches;
+    if (history.rightBackTouches > maxTouches) {
+        maxTouches = history.rightBackTouches;
         history.favoriteLocation = 3;
     }
 }
@@ -1238,10 +1257,10 @@ void initializeDefaultPersonality() {
 void initializeHistory() {
     history.lastInteraction = millis();
     history.totalInteractions = 0;
-    history.headTouches = 0;
-    history.leftTouches = 0;
-    history.rightTouches = 0;
-    history.backTouches = 0;
+    history.leftFrontTouches = 0;
+    history.leftBackTouches = 0;
+    history.rightFrontTouches = 0;
+    history.rightBackTouches = 0;
     history.favoriteLocation = 0;
     history.bondLevel = 0;
 }
@@ -1273,14 +1292,14 @@ void saveHistoryData() {
     EEPROM.write(addr++, history.favoriteLocation);
 
     // Save touch counts (16-bit values)
-    EEPROM.write(addr++, history.headTouches >> 8);
-    EEPROM.write(addr++, history.headTouches & 0xFF);
-    EEPROM.write(addr++, history.leftTouches >> 8);
-    EEPROM.write(addr++, history.leftTouches & 0xFF);
-    EEPROM.write(addr++, history.rightTouches >> 8);
-    EEPROM.write(addr++, history.rightTouches & 0xFF);
-    EEPROM.write(addr++, history.backTouches >> 8);
-    EEPROM.write(addr++, history.backTouches & 0xFF);
+    EEPROM.write(addr++, history.leftFrontTouches >> 8);
+    EEPROM.write(addr++, history.leftFrontTouches & 0xFF);
+    EEPROM.write(addr++, history.leftBackTouches >> 8);
+    EEPROM.write(addr++, history.leftBackTouches & 0xFF);
+    EEPROM.write(addr++, history.rightFrontTouches >> 8);
+    EEPROM.write(addr++, history.rightFrontTouches & 0xFF);
+    EEPROM.write(addr++, history.rightBackTouches >> 8);
+    EEPROM.write(addr++, history.rightBackTouches & 0xFF);
 
     EEPROM.commit();
 }
@@ -1291,14 +1310,14 @@ void loadHistoryData() {
     history.bondLevel = EEPROM.read(addr++);
     history.favoriteLocation = EEPROM.read(addr++);
 
-    history.headTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
-    history.leftTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
-    history.rightTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
-    history.backTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
+    history.leftFrontTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
+    history.leftBackTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
+    history.rightFrontTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
+    history.rightBackTouches = (EEPROM.read(addr++) << 8) | EEPROM.read(addr++);
 
     history.lastInteraction = millis();
-    history.totalInteractions = history.headTouches + history.leftTouches +
-                                history.rightTouches + history.backTouches;
+    history.totalInteractions = history.leftFrontTouches + history.leftBackTouches +
+                                history.rightFrontTouches + history.rightBackTouches;
 }
 
 // ============================================================================
