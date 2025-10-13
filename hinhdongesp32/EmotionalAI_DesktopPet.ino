@@ -216,6 +216,40 @@ const uint8_t PROGMEM emotionTransitionMatrix[10][10] = {
 };
 
 // ============================================================================
+// FUNCTION DECLARATIONS
+// ============================================================================
+void handleTouchPattern(TouchPattern pattern, uint8_t location);
+void respondToTouch(TouchPattern pattern, uint8_t location);
+void handleMotionEvent(MotionType motion);
+void transitionToEmotion(EmotionState newEmotion);
+void playVibrationPattern(VibrationPattern pattern);
+void adaptPersonality(TouchPattern pattern, uint8_t location);
+void updateFavoriteLocation();
+void applyCircadianRhythm();
+void loadOrInitializeData();
+void initializeDefaultPersonality();
+void initializeHistory();
+void savePersonalityData();
+void loadPersonalityData();
+void saveHistoryData();
+void loadHistoryData();
+void printPersonality();
+
+// Face drawing functions
+void drawHappyFace();
+void drawExcitedFace();
+void drawSleepyFace();
+void drawPlayfulFace();
+void drawLonelyFace();
+void drawCuriousFace();
+void drawSurprisedFace();
+void drawContentFace();
+void drawBoredFace();
+void drawAffectionateFace();
+void drawStatusBar();
+void drawArc(int16_t x0, int16_t y0, int16_t r, int16_t startAngle, int16_t endAngle, uint16_t color);
+
+// ============================================================================
 // SETUP FUNCTION
 // ============================================================================
 void setup() {
