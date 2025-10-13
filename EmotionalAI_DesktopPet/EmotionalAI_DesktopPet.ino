@@ -6,12 +6,12 @@
  * - ESP32-C3 Supermini (Main Controller)
  * - SH1106 128x64 OLED Display (Visual Expression)
  * - MPU6050 6-Axis Gyro/Accelerometer (Motion Detection)
- * - 4x TTP223 Capacitive Touch Sensors (Head, Left, Right, Back)
+ * - 4x TTP223 Capacitive Touch Sensors (Front Left, Back Left, Front Right, Back Right)
  * - Vibration Motor (BC547B transistor driver, 1kΩ base resistor)
  *
  * Pin Configuration:
  * - I2C: SDA=8, SCL=9
- * - Touch: Pins 0(Head), 1(Left), 3(Right), 4(Back)
+ * - Touch: Pins 0(Front Left), 1(Back Left), 3(Front Right), 4(Back Right)
  * - Motor: Pin 6
  *
  * Features:
