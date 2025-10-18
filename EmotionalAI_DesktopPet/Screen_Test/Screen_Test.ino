@@ -67,35 +67,38 @@
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 MPU6050 mpu;
 
-// Animation structure to hold animation data
+// Animation structure to hold animation data (RLE compressed)
 struct Animation {
   const char* name;
-  const uint8_t (*frames)[1024];
+  const uint8_t* frames;            // Pointer to compressed frame array (flattened)
+  const int* frameSizes;            // Array of compressed sizes for each frame
+  int maxCompressedSize;            // Maximum compressed frame size
   int frameCount;
   int fps;
   int frameDelay;
+  void (*decompressFunc)(const uint8_t*, int, uint8_t*);  // Decompression function
 };
 
-// Animation list - all available animations
+// Animation list - all available animations (RLE compressed)
 Animation animations[] = {
-  {"Intro", intro_frames, intro_FRAME_COUNT, intro_FPS, intro_FRAME_DELAY},
-  {"Happy", happy_frames, happy_FRAME_COUNT, happy_FPS, happy_FRAME_DELAY},
-  {"Happy 2", happy_2_frames, happy_2_FRAME_COUNT, happy_2_FPS, happy_2_FRAME_DELAY},
-  {"Angry", angry_frames, angry_FRAME_COUNT, angry_FPS, angry_FRAME_DELAY},
-  {"Angry 2", angry_2_frames, angry_2_FRAME_COUNT, angry_2_FPS, angry_2_FRAME_DELAY},
-  {"Confused", confused_2_frames, confused_2_FRAME_COUNT, confused_2_FPS, confused_2_FRAME_DELAY},
-  {"Content", content_frames, content_FRAME_COUNT, content_FPS, content_FRAME_DELAY},
-  {"Determined", determined_frames, determined_FRAME_COUNT, determined_FPS, determined_FRAME_DELAY},
-  {"Embarrassed", embarrassed_frames, embarrassed_FRAME_COUNT, embarrassed_FPS, embarrassed_FRAME_DELAY},
-  {"Excited", excited_2_frames, excited_2_FRAME_COUNT, excited_2_FPS, excited_2_FRAME_DELAY},
-  {"Frustrated", frustrated_frames, frustrated_FRAME_COUNT, frustrated_FPS, frustrated_FRAME_DELAY},
-  {"Laugh", laugh_frames, laugh_FRAME_COUNT, laugh_FPS, laugh_FRAME_DELAY},
-  {"Love", love_frames, love_FRAME_COUNT, love_FPS, love_FRAME_DELAY},
-  {"Music", music_frames, music_FRAME_COUNT, music_FPS, music_FRAME_DELAY},
-  {"Proud", proud_frames, proud_FRAME_COUNT, proud_FPS, proud_FRAME_DELAY},
-  {"Relaxed", relaxed_frames, relaxed_FRAME_COUNT, relaxed_FPS, relaxed_FRAME_DELAY},
-  {"Sleepy", sleepy_frames, sleepy_FRAME_COUNT, sleepy_FPS, sleepy_FRAME_DELAY},
-  {"Sleepy 2", sleepy_3_frames, sleepy_3_FRAME_COUNT, sleepy_3_FPS, sleepy_3_FRAME_DELAY}
+  {"Intro", (const uint8_t*)intro_frames, intro_frame_sizes, intro_MAX_COMPRESSED_SIZE, intro_FRAME_COUNT, intro_FPS, intro_FRAME_DELAY, intro_decompress},
+  {"Happy", (const uint8_t*)happy_frames, happy_frame_sizes, happy_MAX_COMPRESSED_SIZE, happy_FRAME_COUNT, happy_FPS, happy_FRAME_DELAY, happy_decompress},
+  {"Happy 2", (const uint8_t*)happy_2_frames, happy_2_frame_sizes, happy_2_MAX_COMPRESSED_SIZE, happy_2_FRAME_COUNT, happy_2_FPS, happy_2_FRAME_DELAY, happy_2_decompress},
+  {"Angry", (const uint8_t*)angry_frames, angry_frame_sizes, angry_MAX_COMPRESSED_SIZE, angry_FRAME_COUNT, angry_FPS, angry_FRAME_DELAY, angry_decompress},
+  {"Angry 2", (const uint8_t*)angry_2_frames, angry_2_frame_sizes, angry_2_MAX_COMPRESSED_SIZE, angry_2_FRAME_COUNT, angry_2_FPS, angry_2_FRAME_DELAY, angry_2_decompress},
+  {"Confused", (const uint8_t*)confused_2_frames, confused_2_frame_sizes, confused_2_MAX_COMPRESSED_SIZE, confused_2_FRAME_COUNT, confused_2_FPS, confused_2_FRAME_DELAY, confused_2_decompress},
+  {"Content", (const uint8_t*)content_frames, content_frame_sizes, content_MAX_COMPRESSED_SIZE, content_FRAME_COUNT, content_FPS, content_FRAME_DELAY, content_decompress},
+  {"Determined", (const uint8_t*)determined_frames, determined_frame_sizes, determined_MAX_COMPRESSED_SIZE, determined_FRAME_COUNT, determined_FPS, determined_FRAME_DELAY, determined_decompress},
+  {"Embarrassed", (const uint8_t*)embarrassed_frames, embarrassed_frame_sizes, embarrassed_MAX_COMPRESSED_SIZE, embarrassed_FRAME_COUNT, embarrassed_FPS, embarrassed_FRAME_DELAY, embarrassed_decompress},
+  {"Excited", (const uint8_t*)excited_2_frames, excited_2_frame_sizes, excited_2_MAX_COMPRESSED_SIZE, excited_2_FRAME_COUNT, excited_2_FPS, excited_2_FRAME_DELAY, excited_2_decompress},
+  {"Frustrated", (const uint8_t*)frustrated_frames, frustrated_frame_sizes, frustrated_MAX_COMPRESSED_SIZE, frustrated_FRAME_COUNT, frustrated_FPS, frustrated_FRAME_DELAY, frustrated_decompress},
+  {"Laugh", (const uint8_t*)laugh_frames, laugh_frame_sizes, laugh_MAX_COMPRESSED_SIZE, laugh_FRAME_COUNT, laugh_FPS, laugh_FRAME_DELAY, laugh_decompress},
+  {"Love", (const uint8_t*)love_frames, love_frame_sizes, love_MAX_COMPRESSED_SIZE, love_FRAME_COUNT, love_FPS, love_FRAME_DELAY, love_decompress},
+  {"Music", (const uint8_t*)music_frames, music_frame_sizes, music_MAX_COMPRESSED_SIZE, music_FRAME_COUNT, music_FPS, music_FRAME_DELAY, music_decompress},
+  {"Proud", (const uint8_t*)proud_frames, proud_frame_sizes, proud_MAX_COMPRESSED_SIZE, proud_FRAME_COUNT, proud_FPS, proud_FRAME_DELAY, proud_decompress},
+  {"Relaxed", (const uint8_t*)relaxed_frames, relaxed_frame_sizes, relaxed_MAX_COMPRESSED_SIZE, relaxed_FRAME_COUNT, relaxed_FPS, relaxed_FRAME_DELAY, relaxed_decompress},
+  {"Sleepy", (const uint8_t*)sleepy_frames, sleepy_frame_sizes, sleepy_MAX_COMPRESSED_SIZE, sleepy_FRAME_COUNT, sleepy_FPS, sleepy_FRAME_DELAY, sleepy_decompress},
+  {"Sleepy 2", (const uint8_t*)sleepy_3_frames, sleepy_3_frame_sizes, sleepy_3_MAX_COMPRESSED_SIZE, sleepy_3_FRAME_COUNT, sleepy_3_FPS, sleepy_3_FRAME_DELAY, sleepy_3_decompress}
 };
 
 const int animationCount = sizeof(animations) / sizeof(animations[0]);
@@ -109,6 +112,10 @@ unsigned long phaseStartTime = 0;
 int currentAnimation = 0;
 int currentFrame = 0;
 unsigned long lastFrameTime = 0;
+
+// Buffers for decompression
+uint8_t compressedBuffer[700];  // Buffer for compressed frame data (max 682 bytes)
+uint8_t frameBuffer[1024];      // Buffer for decompressed frame (128*64/8 = 1024 bytes)
 
 void setup() {
   Serial.begin(115200);
@@ -451,8 +458,8 @@ void runAnimationTest() {
 
   // Check if it's time to update frame
   if(millis() - lastFrameTime >= anim->frameDelay) {
-    // Display current frame
-    displayFrame(anim->frames[currentFrame]);
+    // Display current frame with decompression
+    displayCompressedFrame(anim, currentFrame);
 
     // Move to next frame
     currentFrame++;
@@ -514,23 +521,59 @@ void runCompleteScreen() {
   }
 }
 
-// Display a single frame from PROGMEM
-void displayFrame(const uint8_t* frameData) {
+// Display a compressed frame (with RLE decompression)
+void displayCompressedFrame(Animation* anim, int frameIndex) {
+  unsigned long startTime = micros();
+
+  // Step 1: Read compressed frame from PROGMEM into RAM buffer
+  int compressedSize = anim->frameSizes[frameIndex];
+
+  // Calculate offset into the flattened 2D array
+  // The frames array is stored as [frame][max_compressed_size]
+  int frameOffset = frameIndex * anim->maxCompressedSize;
+
+  for (int i = 0; i < compressedSize; i++) {
+    compressedBuffer[i] = pgm_read_byte(anim->frames + frameOffset + i);
+  }
+
+  unsigned long readTime = micros() - startTime;
+
+  // Step 2: Decompress the frame using the animation's decompression function
+  anim->decompressFunc(compressedBuffer, compressedSize, frameBuffer);
+
+  unsigned long decompressTime = micros() - startTime - readTime;
+
+  // Step 3: Display the decompressed frame
   display.clearDisplay();
 
-  // Read frame data from PROGMEM and draw to display
+  // Draw bitmap from decompressed buffer
   for(int y = 0; y < SCREEN_HEIGHT; y++) {
     for(int x = 0; x < SCREEN_WIDTH; x++) {
       int byteIndex = (y * SCREEN_WIDTH + x) / 8;
       int bitIndex = 7 - (x % 8);
 
-      uint8_t byte = pgm_read_byte(&frameData[byteIndex]);
-
-      if(byte & (1 << bitIndex)) {
+      if(frameBuffer[byteIndex] & (1 << bitIndex)) {
         display.drawPixel(x, y, SH110X_WHITE);
       }
     }
   }
 
   display.display();
+
+  unsigned long totalTime = micros() - startTime;
+
+  // Debug output every 10th frame
+  if(frameIndex % 10 == 0) {
+    Serial.print("  [Frame ");
+    Serial.print(frameIndex);
+    Serial.print("] Compressed: ");
+    Serial.print(compressedSize);
+    Serial.print("B | Read: ");
+    Serial.print(readTime);
+    Serial.print("us | Decompress: ");
+    Serial.print(decompressTime);
+    Serial.print("us | Total: ");
+    Serial.print(totalTime);
+    Serial.println("us");
+  }
 }

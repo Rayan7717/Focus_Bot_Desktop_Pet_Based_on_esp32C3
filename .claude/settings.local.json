@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"a:/OneDrive/Documents/Programming/ESp32C3 Dasai Mochi/esp32C3_dasai_mochi_clone/EmotionalAI_DesktopPet/Animation_Test/data\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

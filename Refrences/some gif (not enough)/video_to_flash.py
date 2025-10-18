@@ -101,11 +101,53 @@ class GifToFlash:
 
         return True
 
-    def generate_header(self, frames, name, output_path, fps):
+    def rle_compress(self, data):
+        """
+        Run-Length Encoding compression
+        Format: [count, value, count, value, ...]
+        If count > 255, split into multiple runs
+        """
+        if len(data) == 0:
+            return []
+
+        compressed = []
+        current_byte = data[0]
+        count = 1
+
+        for i in range(1, len(data)):
+            if data[i] == current_byte and count < 255:
+                count += 1
+            else:
+                compressed.append(count)
+                compressed.append(current_byte)
+                current_byte = data[i]
+                count = 1
+
+        # Add the last run
+        compressed.append(count)
+        compressed.append(current_byte)
+
+        return np.array(compressed, dtype=np.uint8)
+
+    def generate_header(self, frames, name, output_path, fps, use_compression=True):
         """Generate C header file with frame data"""
 
         frame_count = len(frames)
         bytes_per_frame = len(frames[0]) if frames else 0
+
+        # Compress frames if enabled
+        if use_compression:
+            compressed_frames = [self.rle_compress(frame) for frame in frames]
+            compressed_sizes = [len(cf) for cf in compressed_frames]
+            max_compressed_size = max(compressed_sizes) if compressed_sizes else 0
+            total_compressed = sum(compressed_sizes)
+            total_uncompressed = frame_count * bytes_per_frame
+            compression_ratio = (1 - total_compressed / total_uncompressed) * 100 if total_uncompressed > 0 else 0
+        else:
+            compressed_frames = frames
+            max_compressed_size = bytes_per_frame
+            total_compressed = frame_count * bytes_per_frame
+            compression_ratio = 0
 
         with open(output_path, 'w') as f:
             # Header guard
@@ -116,38 +158,99 @@ class GifToFlash:
             f.write(f"// Auto-generated GIF data for {name}\n")
             f.write(f"// Frame count: {frame_count}\n")
             f.write(f"// Frame rate: {fps} FPS\n")
-            f.write(f"// Bytes per frame: {bytes_per_frame}\n")
-            f.write(f"// Total size: {frame_count * bytes_per_frame} bytes\n\n")
+            f.write(f"// Uncompressed bytes per frame: {bytes_per_frame}\n")
 
-            f.write("#include <Arduino.h>\n\n")
+            if use_compression:
+                f.write(f"// Compression: RLE (Run-Length Encoding)\n")
+                f.write(f"// Compressed size: {total_compressed} bytes\n")
+                f.write(f"// Uncompressed size: {total_uncompressed} bytes\n")
+                f.write(f"// Compression ratio: {compression_ratio:.1f}% saved\n")
+            else:
+                f.write(f"// Total size: {total_compressed} bytes\n")
+
+            f.write("\n#include <Arduino.h>\n\n")
 
             # Frame count and FPS constants
             f.write(f"const int {name}_FRAME_COUNT = {frame_count};\n")
             f.write(f"const int {name}_FPS = {fps};\n")
-            f.write(f"const int {name}_FRAME_DELAY = {int(1000/fps)}; // milliseconds\n\n")
+            f.write(f"const int {name}_FRAME_DELAY = {int(1000/fps)}; // milliseconds\n")
+            f.write(f"const int {name}_UNCOMPRESSED_SIZE = {bytes_per_frame};\n")
+
+            if use_compression:
+                f.write(f"const int {name}_MAX_COMPRESSED_SIZE = {max_compressed_size};\n\n")
+
+                # Add RLE decompression function
+                f.write(f"// RLE Decompression function\n")
+                f.write(f"// Decompresses RLE data into output buffer\n")
+                f.write(f"// compressed: pointer to compressed data\n")
+                f.write(f"// compressed_size: size of compressed data\n")
+                f.write(f"// output: buffer to store decompressed data (must be {bytes_per_frame} bytes)\n")
+                f.write(f"void {name}_decompress(const uint8_t* compressed, int compressed_size, uint8_t* output) {{\n")
+                f.write(f"  int out_idx = 0;\n")
+                f.write(f"  for (int i = 0; i < compressed_size; i += 2) {{\n")
+                f.write(f"    uint8_t count = compressed[i];\n")
+                f.write(f"    uint8_t value = compressed[i + 1];\n")
+                f.write(f"    for (uint8_t j = 0; j < count; j++) {{\n")
+                f.write(f"      output[out_idx++] = value;\n")
+                f.write(f"    }}\n")
+                f.write(f"  }}\n")
+                f.write(f"}}\n\n")
+
+                # Compressed frame sizes array
+                f.write(f"const int {name}_frame_sizes[{frame_count}] = {{\n")
+                f.write("  ")
+                for i, size in enumerate(compressed_sizes):
+                    f.write(f"{size}")
+                    if i < frame_count - 1:
+                        f.write(", ")
+                    if (i + 1) % 10 == 0 and i < frame_count - 1:
+                        f.write("\n  ")
+                f.write("\n};\n\n")
+            else:
+                f.write("\n")
 
             # Frame data array
-            f.write(f"const uint8_t PROGMEM {name}_frames[][{bytes_per_frame}] = {{\n")
+            if use_compression:
+                f.write(f"const uint8_t PROGMEM {name}_frames[][{max_compressed_size}] = {{\n")
+            else:
+                f.write(f"const uint8_t PROGMEM {name}_frames[][{bytes_per_frame}] = {{\n")
 
-            for i, frame in enumerate(frames):
+            for i, frame_data in enumerate(compressed_frames):
                 f.write("  {")
-                for j, byte in enumerate(frame):
+                for j, byte in enumerate(frame_data):
                     if j > 0:
                         f.write(",")
                     if j % 16 == 0:
                         f.write("\n    ")
                     f.write(f"0x{byte:02X}")
+
+                # Pad with zeros if using compression and frame is smaller than max
+                if use_compression and len(frame_data) < max_compressed_size:
+                    for j in range(len(frame_data), max_compressed_size):
+                        f.write(",")
+                        if j % 16 == 0:
+                            f.write("\n    ")
+                        f.write("0x00")
+
                 f.write("\n  }")
                 if i < frame_count - 1:
                     f.write(",")
-                f.write(f"  // Frame {i}\n")
+                f.write(f"  // Frame {i}")
+                if use_compression:
+                    f.write(f" - {compressed_sizes[i]} bytes")
+                f.write("\n")
 
             f.write("};\n\n")
 
             f.write(f"#endif // {guard_name}\n")
 
         print(f"Generated: {output_path}")
-        print(f"Size: {frame_count * bytes_per_frame / 1024:.2f} KB")
+        if use_compression:
+            print(f"Uncompressed size: {total_uncompressed / 1024:.2f} KB")
+            print(f"Compressed size: {total_compressed / 1024:.2f} KB")
+            print(f"Space saved: {compression_ratio:.1f}%")
+        else:
+            print(f"Size: {total_compressed / 1024:.2f} KB")
 
 
 def main():
