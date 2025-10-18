@@ -1,7 +1,7 @@
 /*
- * ESP32-C3 Animation Display Test - SPIFFS Version
+ * ESP32-C3 Animation Display Test - LittleFS Version
  * Displays all available animations in a continuous loop
- * Loads animations on-demand from SPIFFS to save memory
+ * Loads animations on-demand from LittleFS to save memory
  *
  * Hardware:
  * - ESP32-C3 Supermini
@@ -10,15 +10,21 @@
  * Required Libraries:
  * - Adafruit GFX Library
  * - Adafruit SH110X
- * - SPIFFS (built-in)
+ * - LittleFS (built-in)
  *
  * Install via Arduino Library Manager
+ *
+ * IMPORTANT: Before uploading this sketch:
+ * 1. Run: python convert_to_spiffs.py  (creates binary .anim files)
+ * 2. Upload data folder: Tools -> ESP32 Sketch Data Upload
+ * 3. Then upload this sketch
  */
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
-#include <SPIFFS.h>
+#include "FS.h"
+#include "LittleFS.h"
 
 // Pin Definitions for ESP32-C3 Supermini
 #define SDA_PIN 8        // I2C Data (default for ESP32-C3)
@@ -94,39 +100,39 @@ void setup() {
 
   Serial.println("\n========================================");
   Serial.println("ESP32-C3 Animation Display Test");
-  Serial.println("SPIFFS On-Demand Loading Version");
+  Serial.println("LittleFS On-Demand Loading Version");
   Serial.println("========================================");
   Serial.println("Hardware:");
   Serial.println("- SSH1106 128x64 OLED Display");
   Serial.println("========================================\n");
 
-  // Initialize SPIFFS
-  Serial.print("Initializing SPIFFS... ");
+  // Initialize LittleFS
+  Serial.print("Initializing LittleFS... ");
 
-  // First attempt: try to mount existing SPIFFS
-  if(!SPIFFS.begin(false)) {
-    Serial.println("No SPIFFS found.");
-    Serial.println("Formatting SPIFFS (this may take a minute)...");
+  // First attempt: try to mount existing LittleFS
+  if(!LittleFS.begin(false)) {
+    Serial.println("No filesystem found.");
+    Serial.println("Formatting LittleFS (this may take a minute)...");
 
-    // Format SPIFFS
-    if(!SPIFFS.begin(true)) {
+    // Format LittleFS
+    if(!LittleFS.begin(true)) {
       Serial.println("FAILED!");
-      Serial.println("\nERROR: SPIFFS format/mount failed!");
+      Serial.println("\nERROR: LittleFS format/mount failed!");
       Serial.println("\nPossible issues:");
-      Serial.println("1. Partition scheme doesn't include SPIFFS");
-      Serial.println("   Fix: Tools -> Partition Scheme -> 'Default 4MB with spiffs'");
+      Serial.println("1. Partition scheme doesn't include filesystem partition");
+      Serial.println("   Fix: Tools -> Partition Scheme -> 'Default 4MB with spiffs' (works for LittleFS too)");
       Serial.println("2. Hardware issue with flash memory");
-      Serial.println("\nCurrent partition scheme must support SPIFFS!");
+      Serial.println("\nCurrent partition scheme must support filesystem!");
       while(1) {
         delay(1000);
       }
     }
-    Serial.println("SPIFFS formatted successfully!");
+    Serial.println("LittleFS formatted successfully!");
   }
   Serial.println("OK");
 
-  // List SPIFFS contents
-  listSPIFFS();
+  // List LittleFS contents
+  listLittleFS();
 
   // Load animation metadata
   Serial.println("\nLoading animation metadata...");
@@ -235,8 +241,8 @@ void loop() {
 
   // Check if it's time to update frame
   if(millis() - lastFrameTime >= anim->frameDelay) {
-    // Display current frame from SPIFFS
-    displayFrameFromSPIFFS(anim, currentFrame);
+    // Display current frame from LittleFS
+    displayFrameFromLittleFS(anim, currentFrame);
 
     // Move to next frame
     currentFrame++;
@@ -257,10 +263,10 @@ void loop() {
   }
 }
 
-// List SPIFFS contents
-void listSPIFFS() {
-  Serial.println("\nSPIFFS Contents:");
-  File root = SPIFFS.open("/");
+// List LittleFS contents
+void listLittleFS() {
+  Serial.println("\nLittleFS Contents:");
+  File root = LittleFS.open("/");
   File file = root.openNextFile();
   int fileCount = 0;
   size_t totalSize = 0;
@@ -283,9 +289,9 @@ void listSPIFFS() {
   Serial.print(totalSize);
   Serial.println(" bytes");
 
-  size_t totalBytes = SPIFFS.totalBytes();
-  size_t usedBytes = SPIFFS.usedBytes();
-  Serial.print("SPIFFS: ");
+  size_t totalBytes = LittleFS.totalBytes();
+  size_t usedBytes = LittleFS.usedBytes();
+  Serial.print("LittleFS: ");
   Serial.print(usedBytes);
   Serial.print(" / ");
   Serial.print(totalBytes);
@@ -295,7 +301,7 @@ void listSPIFFS() {
 
   // Warn if no files found
   if(fileCount == 0) {
-    Serial.println("\n*** WARNING: No files found in SPIFFS! ***");
+    Serial.println("\n*** WARNING: No files found in LittleFS! ***");
     Serial.println("You need to upload animation data:");
     Serial.println("1. Run: python convert_to_spiffs.py");
     Serial.println("2. Tools -> ESP32 Sketch Data Upload");
@@ -303,9 +309,9 @@ void listSPIFFS() {
   }
 }
 
-// Load animation metadata from SPIFFS
+// Load animation metadata from LittleFS
 bool loadAnimationMetadata(Animation* anim) {
-  File file = SPIFFS.open(anim->filename, "r");
+  File file = LittleFS.open(anim->filename, "r");
   if(!file) {
     return false;
   }
@@ -327,10 +333,10 @@ bool loadAnimationMetadata(Animation* anim) {
   return true;
 }
 
-// Load animation data from SPIFFS
+// Load animation data from LittleFS
 bool loadAnimation(Animation* anim) {
   // Open animation file
-  currentAnimFile = SPIFFS.open(anim->filename, "r");
+  currentAnimFile = LittleFS.open(anim->filename, "r");
   if(!currentAnimFile) {
     return false;
   }
@@ -352,8 +358,8 @@ bool loadAnimation(Animation* anim) {
   return true;
 }
 
-// Display a frame from SPIFFS
-void displayFrameFromSPIFFS(Animation* anim, int frameIndex) {
+// Display a frame from LittleFS
+void displayFrameFromLittleFS(Animation* anim, int frameIndex) {
   unsigned long startTime = micros();
 
   // Calculate file position for this frame
